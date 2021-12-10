@@ -381,28 +381,33 @@ class OBJECT_PT_robot_controller(Panel):
         box.prop(mytool, "my_armature")
         box.prop(mytool, "my_string")
         connection = box.column_flow(columns=2, align=True)
-        connect_row = connection.row()
-        connect_row.operator("wm.connect")
-        disconnect_row = connection.row()
-        disconnect_row.operator("wm.disconnect")
-        connection_all = box.row(align=True)
-        connection_all.operator("wm.connect_all")
-        connection_all.operator("wm.disconnect_all")
+        connect = connection.row()
+        connect.operator("wm.connect")
+        disconnect = connection.row()
+        disconnect.operator("wm.disconnect")
+        connection_all = box.column_flow(columns=2, align=True)
+        connect_all = connection_all.row()
+        connect_all.operator("wm.connect_all")
+        disconnect_all = connection_all.row()
+        disconnect_all.operator("wm.disconnect_all")
         
         if len(context.scene.my_list) == 0:
             box.enabled = False
         else:
             box.enabled = True
             if bpy.context.screen.is_animation_playing:
-                disconnect_row.enabled = False
-                connect_row.enabled = False
+                connection.enabled = False
             else:
                 if getattr(parts[scene.list_index], "value") in rcb_wrapper.keys():
-                    disconnect_row.enabled = True
-                    connect_row.enabled = False
+                    disconnect.enabled = True
+                    disconnect_all.enabled = True
+                    connect.enabled = False
+                    connect_all.enabled = True
                 else:
-                    disconnect_row.enabled = False
-                    connect_row.enabled = True
+                    disconnect.enabled = False
+                    disconnect_all.enabled = False
+                    connect.enabled = True
+                    connect_all.enabled = True
 
 class OT_OpenConfigurationFile(Operator, ImportHelper):
 
