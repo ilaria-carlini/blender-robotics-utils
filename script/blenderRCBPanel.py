@@ -380,9 +380,11 @@ class OBJECT_PT_robot_controller(Panel):
 
         box.prop(mytool, "my_armature")
         box.prop(mytool, "my_string")
-        connection_row = box.column_flow(columns=2, align=True)
-        connection_row.operator("wm.connect")
-        connection_row.operator("wm.disconnect")
+        connection = box.column_flow(columns=2, align=True)
+        connect_row = connection.row()
+        connect_row.operator("wm.connect")
+        disconnect_row = connection.row()
+        disconnect_row.operator("wm.disconnect")
         connection_all = box.row(align=True)
         connection_all.operator("wm.connect_all")
         connection_all.operator("wm.disconnect_all")
@@ -392,15 +394,15 @@ class OBJECT_PT_robot_controller(Panel):
         else:
             box.enabled = True
             if bpy.context.screen.is_animation_playing:
-                row_disconnect.enabled = False
-                row_connect.enabled = False
+                disconnect_row.enabled = False
+                connect_row.enabled = False
             else:
                 if getattr(parts[scene.list_index], "value") in rcb_wrapper.keys():
-                    row_disconnect.enabled = True
-                    row_connect.enabled = False
+                    disconnect_row.enabled = True
+                    connect_row.enabled = False
                 else:
-                    row_disconnect.enabled = False
-                    row_connect.enabled = True
+                    disconnect_row.enabled = False
+                    connect_row.enabled = True
 
 class OT_OpenConfigurationFile(Operator, ImportHelper):
 
