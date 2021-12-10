@@ -133,6 +133,74 @@ def move(dummy):
                 iposDir.setPosition(joint,target)
 
 
+def connect_part(part):
+    robot_name = bpy.context.scene.my_tool.my_string
+    
+    yarp.Network.init()
+    if not yarp.Network.checkNetwork():
+        print ('YARP server is not running!')
+        return {'CANCELLED'}
+
+    options = yarp.Property()
+    driver = yarp.PolyDriver()
+
+    # set the poly driver options
+    options.put("robot", robot_name)
+    options.put("device", "remote_controlboard")
+    options.put("local", "/blender_controller/client/" + part.value)
+    options.put("remote", "/" + robot_name + "/" + part.value)
+
+    # opening the drivers
+    print ('Opening the motor driver...')
+    driver.open(options)
+
+    if not driver.isValid():
+        print ('Cannot open the driver!')
+        return {'CANCELLED'}
+
+    # opening the drivers
+    print ('Viewing motor position/encoders...')
+    icm  = driver.viewIControlMode()
+    iposDir = driver.viewIPositionDirect()
+    ipos = driver.viewIPositionControl()
+    ienc = driver.viewIEncoders()
+    iax = driver.viewIAxisInfo()
+    ilim = driver.viewIControlLimits()
+    if ienc is None or ipos is None or icm is None or iposDir is None or iax is None or ilim is None:
+        print ('Cannot view one of the interfaces!')
+        return {'CANCELLED'}
+
+    encs = yarp.Vector(ipos.getAxes())
+    joint_limits = []
+
+    for joint in range(0, ipos.getAxes()):
+        min = yarp.Vector(1)
+        max = yarp.Vector(1)
+        icm.setControlMode(joint, yarp.VOCAB_CM_POSITION_DIRECT)
+        ilim.getLimits(joint, min.data(), max.data())
+        joint_limits.append([min.get(0), max.get(0)])
+
+    register_rcb(rcb_wrapper(driver, icm, iposDir, ipos, ienc, encs, iax, joint_limits), part.value)
+    
+    setattr(part, "isConnected", True)
+    
+    # TODO check if we need this
+    #bpy.app.handlers.frame_change_post.clear()
+    #bpy.app.handlers.frame_change_post.append(move)
+
+    return {'FINISHED'}
+
+def disconnect_part(part):
+    rcb_instance = bpy.types.Scene.rcb_wrapper[part.value]
+
+    if rcb_instance is None:
+        return {'CANCELLED'}
+    rcb_instance.driver.close()
+
+    del bpy.types.Scene.rcb_wrapper[part.value]
+    setattr(part, "isConnected", False)
+
+    return {'FINISHED'}
 # ------------------------------------------------------------------------
 #    Scene Properties
 # ------------------------------------------------------------------------
@@ -228,19 +296,8 @@ class WM_OT_Disconnect(bpy.types.Operator):
     bl_description= "disconnect the selected part(s)"
 
     def execute(self, context):
-        scene = bpy.context.scene
-        parts = scene.my_list
-        rcb_instance = bpy.types.Scene.rcb_wrapper[getattr(parts[scene.list_index], "value")]
-
-        if rcb_instance is None:
-            return {'CANCELLED'}
-        rcb_instance.driver.close()
-
-        del bpy.types.Scene.rcb_wrapper[getattr(parts[scene.list_index], "value")]
-        
-        setattr(parts[scene.list_index], "isConnected", False)
-
-        return {'FINISHED'}
+        parts = bpy.context.scene.my_list
+        return disconnect_part(parts[scene.list_index]) 
 
 class WM_OT_Connect(bpy.types.Operator):
     bl_label = "Connect"
@@ -248,62 +305,20 @@ class WM_OT_Connect(bpy.types.Operator):
     bl_description= "connect the selected part(s)"
 
     def execute(self, context):
-        scene = bpy.context.scene
-        parts = scene.my_list
-        mytool = scene.my_tool
-        
-        yarp.Network.init()
-        if not yarp.Network.checkNetwork():
-            print ('YARP server is not running!')
-            return {'CANCELLED'}
+        parts = bpy.context.scene.my_list
+        return connect_part(parts[bpy.context.scene.list_index])
 
-        options = yarp.Property()
-        driver = yarp.PolyDriver()
+class WM_OT_ConnectAll(bpy.types.Operator):
+    bl_label = "Connect All"
+    bl_idname = "wm.connect_all"
+    bl_description= "connect all robot's parts"
 
-        # set the poly driver options
-        options.put("robot", mytool.my_string)
-        options.put("device", "remote_controlboard")
-        options.put("local", "/blender_controller/client/"+getattr(parts[scene.list_index], "value"))
-        options.put("remote", "/"+mytool.my_string+"/"+getattr(parts[scene.list_index], "value"))
-
-        # opening the drivers
-        print ('Opening the motor driver...')
-        driver.open(options)
-
-        if not driver.isValid():
-            print ('Cannot open the driver!')
-            return {'CANCELLED'}
-
-        # opening the drivers
-        print ('Viewing motor position/encoders...')
-        icm  = driver.viewIControlMode()
-        iposDir = driver.viewIPositionDirect()
-        ipos = driver.viewIPositionControl()
-        ienc = driver.viewIEncoders()
-        iax = driver.viewIAxisInfo()
-        ilim = driver.viewIControlLimits()
-        if ienc is None or ipos is None or icm is None or iposDir is None or iax is None or ilim is None:
-            print ('Cannot view one of the interfaces!')
-            return {'CANCELLED'}
-
-        encs = yarp.Vector(ipos.getAxes())
-        joint_limits = []
-
-        for joint in range(0, ipos.getAxes()):
-            min = yarp.Vector(1)
-            max = yarp.Vector(1)
-            icm.setControlMode(joint, yarp.VOCAB_CM_POSITION_DIRECT)
-            ilim.getLimits(joint, min.data(), max.data())
-            joint_limits.append([min.get(0), max.get(0)])
-
-        register_rcb(rcb_wrapper(driver, icm, iposDir, ipos, ienc, encs, iax, joint_limits), getattr(parts[scene.list_index], "value"))
-        
-        setattr(parts[scene.list_index], "isConnected", True)
-        
-        # TODO check if we need this
-        #bpy.app.handlers.frame_change_post.clear()
-        #bpy.app.handlers.frame_change_post.append(move)
-
+    def execute(self, context):
+        parts = bpy.context.scene.my_list
+        for p in parts:
+            res = connect_part(p) 
+            if res == {'CANCELLED'}:
+                return res
         return {'FINISHED'}
 
 class WM_OT_Configure(bpy.types.Operator):
@@ -318,6 +333,19 @@ class WM_OT_Configure(bpy.types.Operator):
         bpy.ops.rcb_panel.open_filebrowser('INVOKE_DEFAULT')
 
         return {'FINISHED'}
+        
+class WM_OT_DisconnectAll(bpy.types.Operator):
+    bl_label = "Disconnect All"
+    bl_idname = "wm.disconnect_all"
+    bl_description= "disconnect all robot's parts"
+
+    def execute(self, context):
+        parts = bpy.context.scene.my_list
+        for p in parts:
+            res = disconnect_part(p) 
+            if res == {'CANCELLED'}:
+                return res
+        return {'FINISHED'}
 
 # ------------------------------------------------------------------------
 #    Panel in Object Mode
@@ -330,8 +358,6 @@ class OBJECT_PT_robot_controller(Panel):
     bl_region_type = "UI"
     bl_category = "Tools"
     bl_context = "posemode"
-    row_connect = None
-    row_disconnect = None
     row_configure = None
 
 
@@ -354,12 +380,12 @@ class OBJECT_PT_robot_controller(Panel):
 
         box.prop(mytool, "my_armature")
         box.prop(mytool, "my_string")
-        row_connect = box.row(align=True)
-        row_connect.operator("wm.connect")
-        layout.separator()
-        row_disconnect = box.row(align=True)
-        row_disconnect.operator("wm.disconnect")
-        layout.separator()
+        connection_row = box.column_flow(columns=2, align=True)
+        connection_row.operator("wm.connect")
+        connection_row.operator("wm.disconnect")
+        connection_all = box.row(align=True)
+        connection_all.operator("wm.connect_all")
+        connection_all.operator("wm.disconnect_all")
         
         if len(context.scene.my_list) == 0:
             box.enabled = False
@@ -410,6 +436,8 @@ classes = (
     WM_OT_Disconnect,
     WM_OT_Connect,
     WM_OT_Configure,
+    WM_OT_ConnectAll,
+    WM_OT_DisconnectAll,
     OBJECT_PT_robot_controller,
     OT_OpenConfigurationFile,
     ListItem,
